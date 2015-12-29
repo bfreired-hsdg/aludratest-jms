@@ -195,7 +195,13 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 			Destination dest = (Destination) context.lookup(destinationName);
 			consumer = getSession().createConsumer(dest);
 			connection.start();
-			Message msg = consumer.receive(timeout);
+			Message msg;
+			if (timeout == -1) {
+				msg = consumer.receive();
+			}
+			else {
+				msg = consumer.receive(timeout);
+			}
 			connection.stop();
 			if (msg == null) {
 				throw new PerformanceFailure("Destination " + destinationName + " did not deliver a message within timeout");
