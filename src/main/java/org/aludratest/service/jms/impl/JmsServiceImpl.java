@@ -15,6 +15,13 @@
  */
 package org.aludratest.service.jms.impl;
 
+import java.util.Hashtable;
+
+import javax.jms.ConnectionFactory;
+import javax.naming.Context;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
+
 import org.aludratest.config.ConfigurationException;
 import org.aludratest.config.Preferences;
 import org.aludratest.config.ValidatingPreferencesWrapper;
@@ -24,12 +31,7 @@ import org.aludratest.service.jms.JmsCondition;
 import org.aludratest.service.jms.JmsInteraction;
 import org.aludratest.service.jms.JmsService;
 import org.aludratest.service.jms.JmsVerification;
-
-import javax.jms.ConnectionFactory;
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-import java.util.Hashtable;
+import org.apache.commons.lang.StringUtils;
 
 public class JmsServiceImpl extends AbstractConfigurableAludraService implements JmsService {
 
@@ -72,6 +74,13 @@ public class JmsServiceImpl extends AbstractConfigurableAludraService implements
 		Hashtable<String, String> env = new Hashtable<String, String>();
 		env.put(Context.INITIAL_CONTEXT_FACTORY, initialContextFactory);
 		env.put(Context.PROVIDER_URL, providerUrl);
+		if (!StringUtils.isEmpty(userName)) {
+			env.put(Context.SECURITY_PRINCIPAL, userName);
+		}
+		if (!StringUtils.isEmpty(password)) {
+			env.put(Context.SECURITY_CREDENTIALS, password);
+		}
+
 		try {
 			initialContext = new InitialContext(env);
 			connectionFactory = (ConnectionFactory) initialContext.lookup(connectionFactoryName);
