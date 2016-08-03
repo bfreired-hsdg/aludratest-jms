@@ -13,110 +13,46 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.aludratest.service.jms;
 
-import org.aludratest.config.impl.SimplePreferences;
+import static org.junit.Assert.assertNull;
+
+import java.util.UUID;
+
 import org.aludratest.service.jms.impl.JmsActionImpl;
-import org.aludratest.service.jms.impl.JmsServiceImpl;
-import org.apache.activemq.broker.BrokerService;
-import org.apache.activemq.jndi.ActiveMQInitialContextFactory;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
-import org.junit.*;
-
-import javax.jms.JMSException;
-import javax.jms.Message;
-import javax.jms.MessageListener;
-import javax.jms.TextMessage;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.UUID;
+import org.junit.Assert;
+import org.junit.Test;
 
 /**
  * Created by ojurksch on 06.04.2016.
  */
-public class JmsActionImplTest {
+public class JmsActionImplTest extends AbstractJmsTest {
 
     private static final Logger LOGGER = Logger.getLogger(JmsActionImpl.class);
 
-    private static final String[] queues = {"dynamicQueues/testQueue1"};
+    private static final String QUEUE_NAME = "dynamicQueues/testQueue1";
 
-    private static final String[] topics = {"dynamicTopics/testTopic1"};
-
-    private static BrokerService testBroker;
-
-    private static String testBrokerUri = "vm://localhost";
-
-
-    private JmsService testObject;
-
-    private JmsInteraction perform;
-
-    @BeforeClass
-    public static void startTestBroker() {
-        LOGGER.info("Setting up embedded ActiveMQ broker for URL " + testBrokerUri);
-        testBroker = new BrokerService();
-        try {
-            testBroker.setPersistent(false);
-            testBroker.addConnector(testBrokerUri);
-            testBroker.start();
-        } catch (Exception e) {
-            Assert.fail("Failed to setup testbroker for url "
-                    + testBrokerUri + " : " + e.getMessage());
-        }
-        LOGGER.info("Done setting up embedded ActiveMQ broker for URL " + testBrokerUri);
-    }
-
-    @AfterClass
-    public static void stopTestBroker() {
-        LOGGER.info("Stopping embedded ActiveMQ broker for URL " + testBrokerUri);
-        if (testBroker != null && testBroker.isStarted()) {
-            try {
-                testBroker.stop();
-            } catch (Exception e)  {
-                Assert.fail("Failed to stop testbroker for url "
-                        + testBrokerUri + " : " + e.getMessage());
-            }
-        }
-        LOGGER.info("Done stopping embedded ActiveMQ broker for URL " + testBrokerUri);
-    }
-
-
-    @Before
-    public void prepareJmsService() {
-        LOGGER.info("Setting up JmsService object connected to URL " + testBrokerUri);
-        try {
-            this.testObject = buildJmsService();
-            this.perform = this.testObject.perform();
-
-
-        } catch (Exception e) {
-            Assert.fail("Failed to connect to testbroker on url "
-                    + testBrokerUri + " : " + e.getMessage());
-        }
-        LOGGER.info("Done setting up JmsService object connected to URL " + testBrokerUri);
-    }
+    private static final String TOPIC_NAME = "dynamicTopics/testTopic1";
 
     @Test
     public void testBasicJms() {
-        String queueName = queues[0];
+        String queueName = QUEUE_NAME;
         String textContent = UUID.randomUUID().toString();
 
         try {
             LOGGER.info("Begin testBasicJms");
 
             LOGGER.info("Creating and sending TextMessage to queue " + queueName);
-            TextMessage sentMessage = perform.createTextMessage();
-            sentMessage.setText(textContent);
-            perform.sendMessage(sentMessage,queueName);
+            service.perform().sendTextMessage(textContent, queueName);
 
             LOGGER.info("Receiving TextMessage from queue " + queueName);
-            Message receivedMessage = perform.receiveMessage(queues[0],20);
+            String receivedMessageText = service.perform().receiveTextMessageFromQueue(queueName, null, 20);
 
-            Assert.assertNotNull(receivedMessage);
-            Assert.assertTrue(receivedMessage instanceof TextMessage);
-            Assert.assertTrue(StringUtils.equalsIgnoreCase(sentMessage.getText(),((TextMessage) receivedMessage).getText()));
+            Assert.assertNotNull(receivedMessageText);
+            Assert.assertTrue(StringUtils.equalsIgnoreCase(textContent, receivedMessageText));
 
             LOGGER.info("End testBasicJms");
         } catch (Exception e) {
@@ -142,54 +78,35 @@ public class JmsActionImplTest {
 
         LOGGER.info("Begin testTopicSubscriber");
 
-        final List<Message> received = new ArrayList<Message>();
-        MessageListener listener = new MessageListener() {
-            @Override
-            public void onMessage(Message message) {
-                LOGGER.info("Got Message! ");
-                received.add(message);
-            }
-        };
-
-        final String topicName = topics[0];
-        final String subscriptionName = "testTopicSubscriber@" + topicName;
+        final String subscriptionName = "testTopicSubscriber@" + TOPIC_NAME;
         final String expectedText1 = UUID.randomUUID().toString();
         final String expectedText2 = UUID.randomUUID().toString();
 
-        try {
-            LOGGER.info("Subscribing to topic " + topicName);
-            this.perform.subscribeTopic(listener,topicName,null,subscriptionName,true);
+        LOGGER.info("Subscribing to topic " + TOPIC_NAME);
+        this.service.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, false);
 
-            //  If anything distracting is in there
-            received.clear();
+        LOGGER.info("Sending message to topic " + TOPIC_NAME);
+        this.service.perform().sendTextMessage(expectedText1, TOPIC_NAME);
 
-            LOGGER.info("Sending message to topic " + topicName);
-            this.perform.sendTextMessage(expectedText1,topicName);
+        LOGGER.info("Waiting a bit to receive message(s) from " + TOPIC_NAME);
+        String receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
 
-            LOGGER.info("Waiting a bit to receive message(s) from " + topicName);
-            Thread.sleep(100);
+        LOGGER.info("Checking if message(s) where received on " + TOPIC_NAME);
+        Assert.assertEquals(expectedText1, receivedMessageText);
 
-            LOGGER.info("Checking if message(s) where received on " + topicName);
-            Assert.assertTrue(containtsTextMessage(received,expectedText1));
+        LOGGER.info("Unsubscribing from topic " + TOPIC_NAME);
+        this.service.perform().stopSubscriber(subscriptionName);
 
-            received.clear();
+        LOGGER.info("Sending message to topic " + TOPIC_NAME);
+        this.service.perform().sendTextMessage(expectedText2, TOPIC_NAME);
+        
+        LOGGER.info("Waiting a bit to receive message(s) from " + TOPIC_NAME);
+        receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        
+        LOGGER.info("Assert than NO message(s) where received on " + TOPIC_NAME);
+        assertNull(receivedMessageText);
 
-            LOGGER.info("Unsubscribing from topic " + topicName);
-            this.perform.unsubscribeTopic(subscriptionName);
-
-            LOGGER.info("Sending message to topic " + topicName);
-            this.perform.sendTextMessage(expectedText1,topicName);
-            LOGGER.info("Waiting a bit to receive message(s) from " + topicName);
-            Thread.sleep(100);
-            LOGGER.info("Assert than NO message(s) where received on " + topicName);
-            Assert.assertTrue(received.isEmpty());
-
-        } catch (Exception e)  {
-            Assert.fail("Unexpected excpetion on testTopicSubscriber "
-                    + " : " + e.getMessage());
-        }
         LOGGER.info("End testTopicSubscriber");
-
     }
 
     /**
@@ -207,107 +124,43 @@ public class JmsActionImplTest {
      */
     @Test
     public void testDurableTopicSubscriberRegisterUnregister() {
-
         LOGGER.info("Begin testDurableTopicSubscriberRegisterUnregister");
 
-        final List<Message> received = new ArrayList<Message>();
-        final MessageListener listener = new MessageListener() {
-            @Override
-            public void onMessage(Message message) {
-                LOGGER.info("Got message!");
-                received.add(message);
-            }
-        };
-
-        final String topicName = topics[0];
-        final String subscriptionName = "testDurableTopicSubscriberRegisterUnregister@" + topicName;
+        final String subscriptionName = "testDurableTopicSubscriberRegisterUnregister@" + TOPIC_NAME;
         final String expectedText = UUID.randomUUID().toString();
 
-        try {
-            LOGGER.info("Create durable subscription [" + subscriptionName + "] on TOPIC " + topicName);
-            JmsService subscriber1 = buildJmsService();
-            subscriber1.perform().subscribeTopic(listener,topicName,null,subscriptionName,true);
-            subscriber1.close();
+        LOGGER.info("Create durable subscription [" + subscriptionName + "] on TOPIC " + TOPIC_NAME);
+        JmsService service1 = buildJmsService();
+        service1.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, true);
+        service1.perform().stopSubscriber(subscriptionName);
+        service1.close();
 
-            LOGGER.info("Sending message to the TOPIC " + topicName);
-            received.clear();
-            this.perform.sendTextMessage(expectedText,topicName);
+        LOGGER.info("Sending message to the TOPIC " + TOPIC_NAME);
+        this.service.perform().sendTextMessage(expectedText, TOPIC_NAME);
 
-            LOGGER.info("Connecting a new client using the subscription " + subscriptionName);
-            subscriber1 = buildJmsService();
-            subscriber1.perform().subscribeTopic(listener,topicName,null,subscriptionName,true);
+        LOGGER.info("Connecting a new client using the subscription " + subscriptionName);
+        JmsService service2 = buildJmsService();
+        service2.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, true);
 
-            LOGGER.info("Waiting for messages on subscription...");
-            Thread.sleep(100);
+        LOGGER.info("Waiting for messages on subscription...");
+        String receivedMessage = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
 
-            LOGGER.info("Check for expected message");
-            Assert.assertTrue("Expected message not received!", containtsTextMessage(received,expectedText));
-            received.clear();
+        LOGGER.info("Check for expected message");
+        Assert.assertNotNull("Expected message not received!", receivedMessage);
 
-            LOGGER.info("Unsubscribing subscription " + subscriptionName);
-            subscriber1.perform().unsubscribeTopic(subscriptionName);
+        LOGGER.info("Unsubscribing subscription " + subscriptionName);
+        service2.perform().stopSubscriber(subscriptionName);
 
-            LOGGER.info("Sending message to the TOPIC " + topicName);
-            received.clear();
-            this.perform.sendTextMessage(expectedText,topicName);
+        LOGGER.info("Sending message to the TOPIC " + TOPIC_NAME);
+        this.service.perform().sendTextMessage(expectedText, TOPIC_NAME);
 
-            LOGGER.info("Waiting for messages on subscription...");
-            Thread.sleep(100);
-            Assert.assertTrue("Received unexpected message!", received.isEmpty());
-            subscriber1.close();
+        LOGGER.info("Waiting for messages on subscription...");
+        String receivedMessage2 = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        
+        Assert.assertNull("Received unexpected message!", receivedMessage2);
+        service2.close();
 
-        } catch (Exception e)  {
-            Assert.fail("Unexpected excpetion on testTopicSubscriber "
-                    + " : " + e.getMessage());
-        }
         LOGGER.info("End testDurableTopicSubscriberRegisterUnregister");
-
     }
-
-    //------------------------------------  HELPERS -------------------------------------
-
-    /**
-     * Check if a message of type {@link TextMessage} exists, where the textcontent matches
-     * the given expectedText.
-     *
-     * Compared with {@link StringUtils#equals(String, String)}
-     *
-     * Messages of types <b>other than</b> {@link TextMessage} are ignored.
-     *
-     * @param messages  The list of messages to check
-     * @param expectedText  The text to match against.
-     * @return  true if at least one message was found
-     * @throws JMSException On error accessing the message-objects.
-     */
-    private boolean containtsTextMessage(Collection<Message> messages, String expectedText) throws JMSException {
-        boolean foundExpected = false;
-        for (Message m : messages) {
-            if (m instanceof TextMessage) {
-                String actualText = ((TextMessage) m).getText();
-                if (StringUtils.equals(expectedText,actualText)) {
-                    return true;
-                }
-
-            }
-        }
-        return false;
-    }
-
-    /**
-     * Build a JmsService connected to the jms at testBrokerUri
-     *
-     * @return  the JmsService.
-     * @throws org.aludratest.exception.TechnicalException On error initiating the service.
-     */
-    private JmsService buildJmsService() {
-        SimplePreferences preferences = new  SimplePreferences();
-        preferences.setValue("connectionFactoryJndiName","ConnectionFactory");
-        preferences.setValue("providerUrl",testBrokerUri);
-        preferences.setValue("initialContextFactory",ActiveMQInitialContextFactory.class.getName());
-
-        JmsServiceImpl prepareTestObject = new JmsServiceImpl();
-        prepareTestObject.configure(preferences);
-        return prepareTestObject;
-    }
-
+    
 }

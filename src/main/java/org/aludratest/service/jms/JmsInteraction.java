@@ -15,52 +15,81 @@
  */
 package org.aludratest.service.jms;
 
+import java.io.Serializable;
+
 import org.aludratest.service.Interaction;
 import org.aludratest.service.TechnicalArgument;
 import org.aludratest.service.TechnicalLocator;
-
-import javax.jms.*;
-import java.io.Serializable;
+import org.databene.commons.Validator;
 
 public interface JmsInteraction extends Interaction {
+	
+	// sending messages --------------------------------------------------------
 
 	void sendTextMessage(String text, @TechnicalLocator String destinationName);
 
 	void sendObjectMessage(Serializable object, @TechnicalLocator String destinationName);
 
-	TextMessage createTextMessage();
+	void sendFileAsTextMessage(String fileUri, @TechnicalLocator String destinationName);
 
-	ObjectMessage createObjectMessage();
+	void sendFileAsBytesMessage(String fileUri, @TechnicalLocator String destinationName);
 
-	BytesMessage createBytesMessage();
+	
+	// receiving messages from a queue -----------------------------------------
+	
+	String receiveTextMessageFromQueue(
+			@TechnicalLocator String destinationName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout);
 
-	MapMessage createMapMessage();
+	String receiveTextMessageFromQueueAndValidate(
+			@TechnicalLocator String destinationName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout, 
+			@TechnicalArgument Validator<String> validator);
 
-	StreamMessage createStreamMessage();
+	Serializable receiveObjectMessageFromQueue(
+			@TechnicalLocator String destinationName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout);
 
-	void sendMessage(Message message, @TechnicalLocator String destinationName);
+	Serializable receiveObjectMessageFromQueueAndValidate(
+			@TechnicalLocator String destinationName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout, 
+			@TechnicalArgument Validator<Serializable> validator);
 
-	Message receiveMessage(@TechnicalLocator String destinationName, @TechnicalArgument long timeout);
+	
+	// subscribing a topic and receiving messages ------------------------------
 
-	/**
-	 * Register the given MessageListener as TopicSubscriber on the given destination.
-	 *
-	 *
-	 * @param listener	The listener to register as TopicSubscriber
-	 * @param destinationName	The destination to subsribe to
-	 * @param messageSelector	The messageselector to use on receiving topic-messages.
-	 * @param subscriptionName 	The subscriptionname to be used to create the subscription.
-	 * @param durable		If the subscriber should be registered durable or not
-	 */
-	void subscribeTopic(MessageListener listener, @TechnicalLocator String destinationName, @TechnicalArgument String messageSelector, @TechnicalArgument String subscriptionName, @TechnicalArgument boolean durable) throws JMSException;
+	void startSubscriber(
+			String subscriptionName, 
+			String destinationName, 
+			@TechnicalArgument String messageSelector, 
+			boolean durable);
 
-	/**
-	 * Unregister the given messagelistener that was registered with the given client-id
-	 * MessageListener will stop receiving messages.
-	 *
-	 * @param subscriptionName	the subscriptionName that was used to register and should be removed now.
-     */
-	void unsubscribeTopic(@TechnicalArgument String subscriptionName) throws JMSException;
+	void stopSubscriber(String subscriptionName);
 
+	String receiveTextMessageFromTopic(
+			@TechnicalLocator String subscriptionName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout);
+
+	String receiveTextMessageFromTopicAndValidate(
+			@TechnicalLocator String subscriptionName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout, 
+			@TechnicalArgument Validator<String> validator);
+
+	Serializable receiveObjectMessageFromTopic(
+			@TechnicalLocator String subscriptionName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout);
+
+	Serializable receiveObjectMessageFromTopicAndValidate(
+			@TechnicalLocator String subscriptionName, 
+			@TechnicalArgument String messageSelector, 
+			@TechnicalArgument long timeout, 
+			@TechnicalArgument Validator<Serializable> validator);
 
 }
