@@ -15,7 +15,35 @@
  */
 package org.aludratest.service.jms.impl;
 
-import org.aludratest.exception.*;
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.jms.BytesMessage;
+import javax.jms.Connection;
+import javax.jms.ConnectionFactory;
+import javax.jms.Destination;
+import javax.jms.JMSException;
+import javax.jms.Message;
+import javax.jms.MessageConsumer;
+import javax.jms.MessageProducer;
+import javax.jms.ObjectMessage;
+import javax.jms.Session;
+import javax.jms.TextMessage;
+import javax.jms.Topic;
+import javax.jms.TopicSession;
+import javax.jms.TopicSubscriber;
+import javax.naming.InitialContext;
+import javax.naming.NamingException;
+
+import org.aludratest.exception.AccessFailure;
+import org.aludratest.exception.AutomationException;
+import org.aludratest.exception.FunctionalFailure;
+import org.aludratest.exception.PerformanceFailure;
+import org.aludratest.exception.TechnicalException;
 import org.aludratest.service.SystemConnector;
 import org.aludratest.service.TechnicalArgument;
 import org.aludratest.service.TechnicalLocator;
@@ -23,18 +51,14 @@ import org.aludratest.service.jms.JmsCondition;
 import org.aludratest.service.jms.JmsInteraction;
 import org.aludratest.service.jms.JmsVerification;
 import org.aludratest.testcase.event.attachment.Attachment;
-import org.apache.commons.lang.StringUtils;
+import org.aludratest.testcase.event.attachment.StringAttachment;
+import org.databene.commons.Assert;
+import org.databene.commons.Base64Codec;
+import org.databene.commons.IOUtil;
 import org.databene.commons.StringUtil;
+import org.databene.commons.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.jms.*;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
-import java.io.Serializable;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerification {
 
@@ -47,16 +71,10 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
     private Connection connection;
 
 	/**
-	 * Using additional connections for topic subscriptions to avoid interferrence with
-	 * starting / stopping the default connection during queue-messaging
-	 */
-    private Map<String, Connection> dynamicConnections;
-
-	/**
-	 * Need to keep track of durable subscribers to be abled to disconnect them on
+	 * Need to keep track of durable subscribers to be able to disconnect them on
 	 * command.
 	 */
-    private Map<String, TopicSubscriber> durableConsumers;
+    private Map<String, TopicHandler> topicHandlers;
 
 	private Session session;
 
@@ -65,59 +83,37 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
     private String password;
 
 	private String clientId;
+	
+	private String recentMessage;
+
 
 	public JmsActionImpl(ConnectionFactory connectionFactory, InitialContext context, final String userName, final String password) {
-        this.dynamicConnections = new HashMap<String, Connection>();
-        this.durableConsumers = new HashMap<String, TopicSubscriber>();
         this.connectionFactory = connectionFactory;
 		this.context = context;
         this.userName = userName;
         this.password = password;
+        this.topicHandlers = new HashMap<String, TopicHandler>();
 		this.clientId = userName + "@" + JmsActionImpl.class.getSimpleName() + this.hashCode();
+		this.recentMessage = null;
     }
 
 	public void close() {
 		LOGGER.info("Closing JmsServcie for clientId " + this.clientId );
-		for (TopicSubscriber subscriber : this.durableConsumers.values()) {
-			try {
-				subscriber.close();
-			}
-			catch (JMSException e) {
-				LOGGER.debug("Failed to close subscriber: ", e );
-			}
+		for (TopicHandler handler : this.topicHandlers.values()) {
+			handler.stop();
+			handler.close();
 		}
-		for (Map.Entry<String, Connection> entry : this.dynamicConnections.entrySet()) {
-			try {
-				Connection dynC = entry.getValue();
-				dynC.stop();
-				dynC.close();
-			}
-			catch (JMSException e) {
-				LOGGER.debug("Failed to close dynamic connection [ " + entry.getKey() + " ] : ", e );
-			}
-		}
-		if (session != null) {
-			try {
-                session.close();
-			}
-			catch (JMSException e) {
-				LOGGER.debug("Failed to close jms session : ", e );
-			}
-		}
-		if (connection != null) {
-			try {
-				connection.stop();
-				connection.close();
-			}
-			catch (JMSException e) {
-				LOGGER.debug("Failed to close jms connection for client-id [ " + this.clientId + " ] : ", e );
-			}
-		}
+		close(session);
+		stopAndClose(connection, "jms connection for client-id [ " + this.clientId + " ]");
 	}
-
+	
 	@Override
 	public List<Attachment> createDebugAttachments() {
-		return null;
+        List<Attachment> attachments = new ArrayList<Attachment>();
+        if (this.recentMessage != null) {
+            attachments.add(new StringAttachment("message content", this.recentMessage, "txt"));
+        }
+        return attachments;
 	}
 
 	@Override
@@ -127,10 +123,12 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 
 	@Override
 	public void setSystemConnector(SystemConnector systemConnector) {
+		// not supported
 	}
 
 	@Override
 	public void assertDestinationAvailable(String destinationName) {
+		memorizeMessage(null);
 		if (!isDestinationAvailable(destinationName)) {
 			throw new FunctionalFailure("Destination " + destinationName + " is not available");
 		}
@@ -138,6 +136,7 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 
 	@Override
 	public boolean isDestinationAvailable(String destinationName) {
+		memorizeMessage(null);
 		try {
 			Object o = context.lookup(destinationName);
 			return (o instanceof Destination);
@@ -149,80 +148,302 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 
 	@Override
 	public void sendTextMessage(String text, String destinationName) {
-		TextMessage msg = createTextMessage();
+		memorizeMessage(text);
 		try {
-			msg.setText(text);
+			TextMessage message = createTextMessage();
+			message.setText(text);
+			sendMessage(message, destinationName);
 		}
 		catch (JMSException e) {
 			throw new TechnicalException("Could not set text of text message", e);
 		}
-		sendMessage(msg, destinationName);
 	}
 
 	@Override
 	public void sendObjectMessage(Serializable object, String destinationName) {
-		ObjectMessage msg = createObjectMessage();
+		memorizeMessage(object);
 		try {
+			ObjectMessage msg = createObjectMessage();
 			msg.setObject(object);
+			sendMessage(msg, destinationName);
 		}
 		catch (JMSException e) {
 			throw new TechnicalException("Could not set object of object message", e);
 		}
-		sendMessage(msg, destinationName);
 	}
 
 	@Override
-	public TextMessage createTextMessage() {
+	public void sendFileAsTextMessage(String fileUri, String destinationName) {
 		try {
-			return getSession().createTextMessage();
+			String fileContent = IOUtil.getContentOfURI(fileUri);
+			memorizeMessage(fileContent);
+			sendTextMessage(fileContent, destinationName);
 		}
-		catch (JMSException e) {
-			throw new AccessFailure("Could not create text message", e);
+		catch (IOException e) {
+			throw new AccessFailure("File access failed", e);
 		}
 	}
 
 	@Override
-	public ObjectMessage createObjectMessage() {
+	public void sendFileAsBytesMessage(String fileUri, String destinationName) {
 		try {
-			return getSession().createObjectMessage();
+			byte[] fileContent = IOUtil.getBinaryContentOfUri(fileUri);
+			memorizeMessage(fileContent);
+			BytesMessage message = createBytesMessage();
+			message.writeBytes(fileContent);
+			sendMessage(message, destinationName);
 		}
-		catch (JMSException e) {
-			throw new AccessFailure("Could not create object message", e);
+		catch (IOException e) {
+			throw new AccessFailure("File access failed", e);
+		} catch (JMSException e) {
+			throw new TechnicalException("Message creation or sending failed", e);
 		}
 	}
 
 	@Override
-	public BytesMessage createBytesMessage() {
+	public String receiveTextMessageFromQueue(String destinationName, String messageSelector, long timeout) {
 		try {
-			return getSession().createBytesMessage();
-		}
-		catch (JMSException e) {
-			throw new AccessFailure("Could not create bytes message", e);
+			TextMessage message = receiveQueueMessage(destinationName, messageSelector, timeout, TextMessage.class);
+			String text = message.getText();
+			memorizeMessage(text);
+			return text;
+		} catch (JMSException e) {
+			throw new AutomationException("Unable to read message text", e);
 		}
 	}
-
+	
 	@Override
-	public MapMessage createMapMessage() {
+	public Serializable receiveObjectMessageFromQueue(String destinationName, String messageSelector, long timeout) {
 		try {
-			return getSession().createMapMessage();
+			ObjectMessage message = receiveQueueMessage(destinationName, messageSelector, timeout, ObjectMessage.class);
+			Serializable object = message.getObject();
+			memorizeMessage(object);
+			return object;
+		} catch (JMSException e) {
+			throw new AutomationException("Unable to read message text", e);
 		}
-		catch (JMSException e) {
-			throw new AccessFailure("Could not create map message", e);
-		}
+	}
+	
+	@Override
+	public String receiveTextMessageFromQueueAndValidate(@TechnicalLocator String destinationName, String messageSelector,
+			@TechnicalArgument long timeout, @TechnicalArgument Validator<String> validator) {
+		String text = receiveTextMessageFromQueue(destinationName, messageSelector, timeout);
+		memorizeMessage(text);
+		if (!validator.valid(text))
+			throw new FunctionalFailure("Message invalid");
+		return text;
 	}
 
 	@Override
-	public StreamMessage createStreamMessage() {
+	public Serializable receiveObjectMessageFromQueueAndValidate(@TechnicalLocator String destinationName, String messageSelector,
+			@TechnicalArgument long timeout, @TechnicalArgument Validator<Serializable> validator) {
+		Serializable object = receiveTextMessageFromQueue(destinationName, messageSelector, timeout);
+		memorizeMessage(object);
+		if (!validator.valid(object))
+			throw new FunctionalFailure("Message invalid");
+		return object;
+	}
+    
+	// topic subscription interface --------------------------------------------
+	
+	@Override
+	public void startSubscriber(String subscriptionName, String destinationName, String messageSelector, boolean durable) {
+		Assert.notEmpty(subscriptionName, "subscriptionName must be provided!");
+		memorizeMessage(null);
+		TopicHandler handler = getOrCreateTopicHandler(subscriptionName, destinationName, messageSelector, durable);
+		handler.start();
+	}
+
+	@Override
+	public void stopSubscriber(String subscriptionName) {
+		getTopicHandler(subscriptionName).stop();
+	}
+	
+	@Override
+	public String receiveTextMessageFromTopic(String subscriptionName, String messageSelector, long timeout) {
 		try {
-			return getSession().createStreamMessage();
+			TextMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, TextMessage.class);
+			String text = (message != null ? message.getText() : null);
+			memorizeMessage(text);
+			return text;
+		} catch (JMSException e) {
+			throw new AutomationException("Unable to read message text", e);
 		}
-		catch (JMSException e) {
-			throw new AccessFailure("Could not create stream message", e);
+	}
+	
+	@Override
+	public Serializable receiveObjectMessageFromTopic(String subscriptionName, String messageSelector, long timeout) {
+		try {
+			ObjectMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, ObjectMessage.class);
+			Serializable object = (message != null ? message.getObject() : null);
+			memorizeMessage(object);
+			return object;
+		} catch (JMSException e) {
+			throw new AutomationException("Unable to read message text", e);
 		}
+	}
+	
+	@Override
+	public String receiveTextMessageFromTopicAndValidate(@TechnicalLocator String subscriptionName, String messageSelector,
+			@TechnicalArgument long timeout, @TechnicalArgument Validator<String> validator) {
+		String text = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+		memorizeMessage(text);
+		if (!validator.valid(text))
+			throw new FunctionalFailure("Message invalid");
+		return text;
 	}
 
 	@Override
-	public void sendMessage(Message message, String destinationName) {
+	public Serializable receiveObjectMessageFromTopicAndValidate(@TechnicalLocator String subscriptionName, String messageSelector,
+			@TechnicalArgument long timeout, @TechnicalArgument Validator<Serializable> validator) {
+		Serializable object = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+		memorizeMessage(object);
+		if (!validator.valid(object))
+			throw new FunctionalFailure("Message invalid");
+		return object;
+	}
+    
+	
+    // private helper methods --------------------------------------------------
+	
+	private void memorizeMessage(Object message) {
+		if (message == null) {
+			this.recentMessage = null;
+		} else if (message instanceof String) {
+			this.recentMessage = (String) message;
+		} else if (message instanceof byte[]) {
+			this.recentMessage = Base64Codec.encode((byte[]) message);
+		} else {
+			this.recentMessage = message.toString();
+		}
+	}
+
+	private TopicHandler getOrCreateTopicHandler(String subscriptionName, String destinationName, String messageSelector,
+			boolean durable) {
+		TopicHandler handler = getTopicHandler(subscriptionName);
+		if (handler == null) {
+			handler = createTopicHandler(subscriptionName, destinationName, messageSelector, durable);
+		}
+		return handler;
+	}
+
+	private TopicHandler getTopicHandler(String subscriptionName) {
+		return this.topicHandlers.get(subscriptionName);
+	}
+
+	private TopicHandler createTopicHandler(String subscriptionName, String destinationName, String messageSelector,
+			boolean durable) {
+		LOGGER.debug("Creating topic-subscriber for topic " + destinationName + " and subscription name " + subscriptionName);
+	    try {
+			Connection c = createDynamicConnection(subscriptionName);
+			TopicSession ts = (TopicSession) c.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			Topic topic = lookupTopic(destinationName);
+			TopicSubscriber subscriber;
+			if (durable) {
+				subscriber = ts.createDurableSubscriber(topic, subscriptionName, messageSelector, false);
+			} else {
+				subscriber = ts.createSubscriber(topic, messageSelector, true);
+			}
+			TopicHandler handler = new TopicHandler(subscriptionName, durable, subscriber, c);
+		    this.topicHandlers.put(subscriptionName, handler);
+		    return handler;
+		} catch (JMSException e) {
+			throw new AutomationException("Failed to subscribe", e);
+		}
+	}
+
+	private Topic lookupTopic(String destinationName) {
+		Topic topic;
+        try {
+            topic = (Topic) context.lookup(destinationName);
+        } catch (NamingException e) {
+            throw new AutomationException("Could not lookup destination " + destinationName, e);
+        }
+		return topic;
+	}
+
+    private void startConnection() throws JMSException {
+		LOGGER.debug("starting connection");
+        this.getOrCreateConnection().start();
+    }
+
+    private synchronized Connection getOrCreateConnection() {
+        if (this.connection == null) {
+            this.connection = createConnection(this.clientId);
+        }
+        return this.connection;
+    }
+
+	/**
+	 * Build a new connection with the given clientId
+	 *
+	 * @param clientId	the clientId
+
+	 * @return
+     */
+    private synchronized Connection createConnection(String clientId) {
+		try {
+			Connection result;
+            if (StringUtil.isEmpty(userName)) {
+                result = this.connectionFactory.createConnection();
+            }
+            else {
+				result = this.connectionFactory.createConnection(this.userName, this.password);
+            }
+			result.setClientID(clientId);
+
+			return result;
+        } catch (JMSException e) {
+            throw new TechnicalException("Could not establish JMS connection", e);
+        }
+    }
+
+	/**
+	 * Creates a dynamic connection for the given subscriptionName.
+	 *
+	 * According to JavaDoc of {@link TopicSession#createDurableSubscriber(Topic, String, String, boolean)}
+	 * durable subscriptions must use the same clientIds on every connection to a particular subscription.
+	 * Therefore the clientId used for dynamic-connections is derived from the following rule:
+	 *
+	 * this.userName + "@" + this.getClass().getSimpleName() + "[" + @param subscriptionName + "]"
+	 *
+	 * Even new Instances of JmsActionImpl will produce a clientId that is able to reconnect to existing
+	 * durable subscriptions.
+	 *
+	 * @param subscriptionName	the subscription name
+	 * @return	The connection.
+	 *
+	 * @throws JMSException
+     */
+    private Connection createDynamicConnection(String subscriptionName) throws  JMSException {
+		final String dynClientID =
+				this.userName + "@" + this.getClass().getSimpleName() + "[" +subscriptionName + "]";
+        Connection dynC = null;
+        dynC = createConnection(dynClientID);
+        return dynC;
+
+    }
+
+	private Session getSession() throws JMSException {
+		if (session == null) {
+			session = getOrCreateConnection().createSession(false, Session.AUTO_ACKNOWLEDGE);
+		}
+		return session;
+	}
+
+	private TextMessage createTextMessage() throws JMSException {
+		return getSession().createTextMessage();
+	}
+
+	private ObjectMessage createObjectMessage() throws JMSException {
+		return getSession().createObjectMessage();
+	}
+
+	private BytesMessage createBytesMessage() throws JMSException {
+		return getSession().createBytesMessage();
+	}
+
+	private void sendMessage(Message message, String destinationName) {
 		MessageProducer producer = null;
 		try {
 			LOGGER.debug("Sending message to destination "  + destinationName);
@@ -242,35 +463,33 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 			throw new AccessFailure("Could not send JMS message", e);
 		}
 		finally {
-			if (producer != null) {
-				try {
-					producer.close();
-				}
-				catch (JMSException e) {
-				}
-			}
+			close(producer);
 		}
 	}
 
-	@Override
-	public Message receiveMessage(String destinationName, long timeout) {
+	@SuppressWarnings("unchecked")
+	private <T extends Message> T receiveQueueMessage(String destinationName, String messageSelector, long timeout, Class<T> type) {
 		MessageConsumer consumer = null;
 		try {
 			Destination dest = (Destination) context.lookup(destinationName);
-			consumer = getSession().createConsumer(dest);
+			consumer = getSession().createConsumer(dest, messageSelector);
             this.startConnection();
-			Message msg;
+
+			Message message;
 			if (timeout == -1) {
-				msg = consumer.receive();
+				message = consumer.receive();
 			}
 			else {
-				msg = consumer.receive(timeout);
+				message = consumer.receive(timeout);
 			}
 			this.stopConnection();
-			if (msg == null) {
+			if (message == null) {
 				throw new PerformanceFailure("Destination " + destinationName + " did not deliver a message within timeout");
 			}
-			return msg;
+			if (!type.isAssignableFrom(message.getClass())) {
+				throw new AutomationException("Received message is not a text message");
+			}
+			return (T) message;
 		}
 		catch (NamingException e) {
 			throw new AutomationException("Could not lookup destination " + destinationName, e);
@@ -282,138 +501,67 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 			throw new AccessFailure("Could not receive JMS message", e);
 		}
 		finally {
-			if (consumer != null) {
-				try {
-					consumer.close();
-				}
-				catch (JMSException e) {
-				}
+			close(consumer);
+		}
+	}
+	
+	@SuppressWarnings("unchecked")
+	private <T extends Message> T receiveTopicMessage(String subscriptionName, String messageSelector, long timeout, Class<T> type) {
+		TopicHandler handler = getTopicHandler(subscriptionName);
+		Message message = handler.receive(timeout);
+		if (message != null && !type.isAssignableFrom(message.getClass())) {
+			throw new AutomationException("Received message is not a text message");
+		}
+		return (T) message;
+	}
+	
+	private static void close(MessageProducer producer) {
+		if (producer != null) {
+			try {
+				producer.close();
+			}
+			catch (JMSException e) {
+				LOGGER.debug("Failed to close producer: ", e );
 			}
 		}
 	}
 
-	/**
-	 * Build a new connection with the given clientId
-	 *
-	 * @param clientId	the clientId
-
-	 * @return
-     */
-    private Connection buildConnection(String clientId) {
-		try {
-			Connection result;
-            if (StringUtil.isEmpty(userName)) {
-                result = this.connectionFactory.createConnection();
-            }
-            else {
-				result = this.connectionFactory.createConnection(this.userName, this.password);
-            }
-			result.setClientID(clientId);
-
-			return result;
-        } catch (JMSException e) {
-            throw new TechnicalException("Could not establish JMS connection", e);
-        }
-    }
-
-    private Connection getConnection() {
-        if (this.connection == null) {
-            this.connection = buildConnection(this.clientId);
-        }
-        return this.connection;
-    }
-
-	/**
-	 * Creates a dynamic connection for the given subscriptionName.
-	 *
-	 * According to JavaDoc of {@link TopicSession#createDurableSubscriber(Topic, String, String, boolean)}
-	 * durablesubscriptions must use the same clientIds on every connection to a particular subscription.
-	 * Therefore the clientId used for dynamic-connections is derived from the folloging rule:
-	 *
-	 * this.userName + "@" + this.getClass().getSimpleName() + "[" + @param subscriptionName + "]"
-	 *
-	 * Even new Instances of JmsActionImpl will produce a clientId that is abled to reconnect to existing
-	 * durable subscriptions.
-	 *
-	 * @param subscriptionName	the subscriptionname
-	 * @return	The connection.
-	 *
-	 * @throws JMSException
-     */
-    private Connection getDynamicConnection(String subscriptionName) throws  JMSException {
-
-		final String dynClientID =
-				this.userName + "@" + this.getClass().getSimpleName() + "[" +subscriptionName + "]";
-        Connection dynC = this.dynamicConnections.get(dynClientID);
-        if (dynC == null) {
-            dynC = buildConnection(dynClientID);
-            this.dynamicConnections.put(dynClientID,dynC);
-            dynC.start();
-        }
-        return dynC;
-
-    }
-
-
-	private Session getSession() throws JMSException {
-		if (session == null) {
-			session = getConnection().createSession(false, Session.AUTO_ACKNOWLEDGE);
+	private static void close(MessageConsumer consumer) {
+		if (consumer != null) {
+			try {
+				consumer.close();
+			}
+			catch (JMSException e) {
+				LOGGER.debug("Failed to close consumer: ", e );
+			}
 		}
-		return session;
 	}
 
-	@Override
-	public void subscribeTopic(MessageListener listener, @TechnicalLocator String destinationName, @TechnicalArgument String messageSelector, @TechnicalArgument String subscriptionName, @TechnicalArgument boolean durable) throws JMSException  {
-		if (StringUtils.isEmpty(subscriptionName)) {
-			throw new IllegalArgumentException("subscriptionName must be provided to subscribe!");
+	private static void close(Session session) {
+		if (session != null) {
+			try {
+                session.close();
+			}
+			catch (JMSException e) {
+				LOGGER.debug("Failed to close jms session : ", e );
+			}
 		}
-        Topic topic;
-        try {
-            topic = (Topic) context.lookup(destinationName);
-        } catch (NamingException e) {
-            throw new AutomationException("Could not lookup destination " + destinationName, e);
-        }
-
-		LOGGER.debug("Creating topic-subscriber for topic " + destinationName + " and subscriptionname " + subscriptionName);
-	    Connection c = getDynamicConnection(subscriptionName);
-
-        TopicSession ts = (TopicSession) c.createSession(false,Session.AUTO_ACKNOWLEDGE);
-		if (durable) {
-            TopicSubscriber subscriber = ts.createDurableSubscriber(topic,subscriptionName,messageSelector,false);
-            subscriber.setMessageListener(listener);
-            this.durableConsumers.put(subscriptionName,subscriber);
-		} else {
-            ts.createSubscriber(topic,messageSelector,true).setMessageListener(listener);
-        }
-
 	}
 
-
-    @Override
-    public void unsubscribeTopic(@TechnicalArgument String subscriptionName) throws JMSException {
-        if (StringUtils.isEmpty(clientId)) {
-            throw new IllegalArgumentException("Client-Id must be provided to unsubscribe");
-        }
-		LOGGER.debug("Unsubscribing from subscription " + subscriptionName);
-        Connection c = getDynamicConnection(subscriptionName);
-        c.stop();
-
-        TopicSubscriber subscriber = this.durableConsumers.get(subscriptionName);
-        if (subscriber != null) {
-            subscriber.close();
-            c.createSession(false,Session.AUTO_ACKNOWLEDGE).unsubscribe(subscriptionName);
-            this.durableConsumers.remove(subscriptionName);
-        }
-        c.close();
-        this.dynamicConnections.remove(c);
-
-    }
-
-    private void startConnection() throws JMSException {
-        this.getConnection().start();
-    }
+	private static void stopAndClose(Connection connection, String description) {
+		if (connection != null) {
+			try {
+				connection.stop();
+				connection.close();
+			}
+			catch (JMSException e) {
+				LOGGER.debug("Failed to close " + description + " : ", e );
+			}
+		}
+	}
 
     private void stopConnection() throws JMSException {
-        this.getConnection().stop();
+        this.getOrCreateConnection().stop();
     }
+
 }
