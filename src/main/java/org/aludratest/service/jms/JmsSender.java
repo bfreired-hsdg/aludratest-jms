@@ -22,6 +22,8 @@ import org.aludratest.service.jms.data.TextMessageData;
 
 /**
  * Abstract parent class for specific JMS message senders.
+ * @param E when subclassing JmsSender, use the subclass itself as generic class parameter, 
+ * 			for example <code>class MyJmsSender extends JmsSender&lt;MyJmsSender&gt;</code>
  * @author Volker Bergmann
  */
 
@@ -35,22 +37,22 @@ public abstract class JmsSender<E extends JmsSender<E>> implements ActionWordLib
 		this.service = service;
 	}
 
-	public E sendTextMessage(TextMessageData data) {
+	public final E sendTextMessage(TextMessageData data) {
 		service.perform().sendTextMessage(data.getMessageText(), destinationName);
 		return verifyState();
 	}
 
-	public E sendObjectMessage(ObjectMessageData data) {
+	public final E sendObjectMessage(ObjectMessageData data) {
 		service.perform().sendObjectMessage(data.getMessageObject(), destinationName);
 		return verifyState();
 	}
 
-	public E sendFileAsTextMessage(FileMessageData data) {
+	public final E sendFileAsTextMessage(FileMessageData data) {
 		service.perform().sendFileAsTextMessage(data.getFileUri(), destinationName);
 		return verifyState();
 	}
 	
-	public E sendFileAsBytesMessage(FileMessageData data) {
+	public final E sendFileAsBytesMessage(FileMessageData data) {
 		service.perform().sendFileAsBytesMessage(data.getFileUri(), destinationName);
 		return verifyState();
 	}

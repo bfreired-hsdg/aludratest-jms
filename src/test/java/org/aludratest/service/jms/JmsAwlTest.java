@@ -61,7 +61,7 @@ public class JmsAwlTest extends AbstractJmsTest {
         final String textContent = UUID.randomUUID().toString();
 
         LOGGER.info("Starting receiver");
-        MyTopicReceiver receiver = new MyTopicReceiver(SUBSCRIPTION_NAME, TOPIC_NAME, true, service);
+        MyTopicSubscriber receiver = new MyTopicSubscriber(SUBSCRIPTION_NAME, TOPIC_NAME, true, service);
         receiver.start(null);
 
         LOGGER.info("Sending TextMessage to topic " + TOPIC_NAME);

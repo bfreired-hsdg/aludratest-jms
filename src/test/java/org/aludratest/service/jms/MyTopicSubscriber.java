@@ -15,18 +15,15 @@
  */
 package org.aludratest.service.jms;
 
-import org.aludratest.service.ComponentId;
-import org.aludratest.testcase.AludraTestContext;
-
 /**
- * Provides JMS utility methods.
+ * Custom {@link TopicSubscriber} implementation for testing.
  * @author Volker Bergmann
  */
 
-public class JmsUtilities {
+public class MyTopicSubscriber extends TopicSubscriber<MyTopicSubscriber> {
 
-    public JmsService getJmsService(String instanceName, AludraTestContext context) {
-        return context.getService(ComponentId.create(JmsService.class, instanceName));
-    }
-    
+	public MyTopicSubscriber(String subscriptionName, String destinationName, boolean durable, JmsService service) {
+		super(subscriptionName, destinationName, durable, service);
+	}
+
 }

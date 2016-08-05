@@ -17,11 +17,16 @@ package org.aludratest.service.jms.data;
 
 /**
  * {@link JmsMessageData} class for sending files via JMS.
+ * The fileUri field and parameters denote a URI of the file as supported 
+ * by the Databene Commons library. It may be a resource in the classpath, 
+ * a local file or a remote file like http://www.myserver.com/myfile.txt.
  * @author Volker Bergmann
  */
 
 public class FileMessageData extends JmsMessageData {
 	
+	/** The URI of the file that contains the message data, 
+	 * see the class comment for its semantics */
 	private String fileUri;
 
 	public FileMessageData() {
@@ -33,6 +38,7 @@ public class FileMessageData extends JmsMessageData {
 	}
 	
 	/**
+	 * Returns the fileUri, see the class comment for its semantics.
 	 * @return the fileUri
 	 */
 	public String getFileUri() {
@@ -40,6 +46,7 @@ public class FileMessageData extends JmsMessageData {
 	}
 	
 	/**
+	 * Sets the fileUri, see the class comment for its semantics.
 	 * @param fileUri the fileUri to set
 	 */
 	public void setFileUri(String fileUri) {

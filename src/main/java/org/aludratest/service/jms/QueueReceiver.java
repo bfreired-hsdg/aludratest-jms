@@ -24,6 +24,19 @@ import org.databene.commons.Validator;
 
 /**
  * Receives messages from a JMS {@link Queue}.
+ * In order to use it, you need to derive a sub class, for example
+ * <pre>
+ * 		class MyTopicSubscriber extends TopicSubscriber&lt;MyTopicSubscriber&gt;
+ * </pre>
+ * then instantiate it and e.g. call the {@link #receiveTextMessage(String, long, TextMessageData)} 
+ * Method with a {@link TextMessageData} object provided to receive the content of the message:
+ * <pre> 
+ * 		MyQueueReceiver receiver = new MyQueueReceiver(SUBSCRIPTION_NAME, TOPIC_NAME, true, service);
+ * 		TextMessageData receivedMessage = new TextMessageData();
+ * 		receiver.receiveTextMessage(null, 1000, receivedMessage);
+ * </pre>
+ * @param E when subclassing QueueReceiver, use the subclass itself as generic class parameter, 
+ * 			for example <code>class MyJmsReceiver extends JmsReceiver&lt;MyJmsReceiver&gt;</code>
  * @author Volker Bergmann
  */
 
@@ -33,23 +46,23 @@ public abstract class QueueReceiver<E extends QueueReceiver<E>> extends Abstract
 		super(destinationName, service);
 	}
 
-	public E receiveTextMessage(String messageSelector, long timeout, TextMessageData result) {
+	public final E receiveTextMessage(String messageSelector, long timeout, TextMessageData result) {
 		String messageText = service.perform().receiveTextMessageFromQueue(destinationName, messageSelector, timeout);
 		result.setMessageText(messageText);
 		return verifyState();
 	}
 
-	public E receiveTextMessageAndValidate(String messageSelector, long timeout, Validator<String> validator) {
+	public final E receiveTextMessageAndValidate(String messageSelector, long timeout, Validator<String> validator) {
 		service.perform().receiveTextMessageFromQueue(destinationName, messageSelector, timeout);
 		return verifyState();
 	}
 
-	public E receiveObjectMessage(String messageSelector, long timeout) {
+	public final E receiveObjectMessage(String messageSelector, long timeout) {
 		service.perform().receiveTextMessageFromQueue(destinationName, messageSelector, timeout);
 		return verifyState();
 	}
 
-	public E receiveObjectMessageAndValidate(String messageSelector, long timeout, Validator<Serializable> validator) {
+	public final E receiveObjectMessageAndValidate(String messageSelector, long timeout, Validator<Serializable> validator) {
 		service.perform().receiveObjectMessageFromQueueAndValidate(destinationName, messageSelector, timeout, validator);
 		return verifyState();
 	}
