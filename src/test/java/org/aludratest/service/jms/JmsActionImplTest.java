@@ -16,13 +16,19 @@
 
 package org.aludratest.service.jms;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
+import java.io.UnsupportedEncodingException;
+import java.util.Iterator;
 import java.util.UUID;
 
 import org.aludratest.service.jms.impl.JmsActionImpl;
+import org.aludratest.testcase.event.attachment.Attachment;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
+import org.databene.commons.Encodings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -38,28 +44,28 @@ public class JmsActionImplTest extends AbstractJmsTest {
     private static final String TOPIC_NAME = "dynamicTopics/testTopic1";
 
     @Test
-    public void testBasicJms() {
+    public void testBasicJms() throws UnsupportedEncodingException {
         String queueName = QUEUE_NAME;
         String textContent = UUID.randomUUID().toString();
 
-        try {
-            LOGGER.info("Begin testBasicJms");
+        LOGGER.info("Begin testBasicJms");
 
-            LOGGER.info("Creating and sending TextMessage to queue " + queueName);
-            service.perform().sendTextMessage(textContent, queueName);
+        LOGGER.info("Creating and sending TextMessage to queue " + queueName);
+        service.perform().sendTextMessage(textContent, queueName);
+        // verify attachment
+        Iterator<Attachment> atIterator = getLastTestStep().getAttachments().iterator();
+        assertTrue(atIterator.hasNext());
+        Attachment attachment = atIterator.next();
+		assertEquals("Message text", attachment.getLabel());
+        assertEquals(textContent, new String(attachment.getFileData(), Encodings.UTF_8));
 
-            LOGGER.info("Receiving TextMessage from queue " + queueName);
-            String receivedMessageText = service.perform().receiveTextMessageFromQueue(queueName, null, 20);
+        LOGGER.info("Receiving TextMessage from queue " + queueName);
+        String receivedMessageText = service.perform().receiveTextMessageFromQueue(queueName, null, 20);
 
-            Assert.assertNotNull(receivedMessageText);
-            Assert.assertTrue(StringUtils.equalsIgnoreCase(textContent, receivedMessageText));
+        Assert.assertNotNull(receivedMessageText);
+        Assert.assertTrue(StringUtils.equalsIgnoreCase(textContent, receivedMessageText));
 
-            LOGGER.info("End testBasicJms");
-        } catch (Exception e) {
-            Assert.fail("Failed on testBasicJms "
-                    + " : " + e.getMessage());
-        }
-
+        LOGGER.info("End testBasicJms");
     }
 
     /**
@@ -130,7 +136,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         final String expectedText = UUID.randomUUID().toString();
 
         LOGGER.info("Create durable subscription [" + subscriptionName + "] on TOPIC " + TOPIC_NAME);
-        JmsService service1 = buildJmsService();
+        JmsService service1 = getLoggingJmsService();
         service1.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, true);
         service1.perform().stopSubscriber(subscriptionName);
         service1.close();
@@ -139,7 +145,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         this.service.perform().sendTextMessage(expectedText, TOPIC_NAME);
 
         LOGGER.info("Connecting a new client using the subscription " + subscriptionName);
-        JmsService service2 = buildJmsService();
+        JmsService service2 = getLoggingJmsService();
         service2.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, true);
 
         LOGGER.info("Waiting for messages on subscription...");
