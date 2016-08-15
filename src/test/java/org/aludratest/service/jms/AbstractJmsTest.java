@@ -15,6 +15,8 @@
  */
 package org.aludratest.service.jms;
 
+import org.aludratest.service.AludraService;
+import org.aludratest.service.ComponentId;
 import org.aludratest.testing.service.AbstractAludraServiceTest;
 import org.apache.activemq.broker.BrokerService;
 import org.junit.AfterClass;
@@ -71,7 +73,12 @@ public class AbstractJmsTest extends AbstractAludraServiceTest {
      * @throws org.aludratest.exception.TechnicalException On error initiating the service.
      */
     protected JmsService getLoggingJmsService() {
-        return getLoggingService(JmsService.class, "jmsTest");
+        return newLoggingService(JmsService.class, "jmsTest");
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends AludraService, U extends T> U newLoggingService(Class<T> interfaceClass, String moduleName) {
+        return (U) framework.getServiceManager().createAndConfigureService(ComponentId.create(interfaceClass, moduleName), context, true);
     }
 
 }

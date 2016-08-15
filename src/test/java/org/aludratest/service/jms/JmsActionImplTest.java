@@ -153,6 +153,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
 
         LOGGER.info("Check for expected message");
         Assert.assertNotNull("Expected message not received!", receivedMessage);
+        assertEquals(expectedText, receivedMessage);
 
         LOGGER.info("Unsubscribing subscription " + subscriptionName);
         service2.perform().stopSubscriber(subscriptionName);
