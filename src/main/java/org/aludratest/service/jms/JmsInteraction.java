@@ -17,6 +17,8 @@ package org.aludratest.service.jms;
 
 import java.io.Serializable;
 
+import org.aludratest.service.AttachParameter;
+import org.aludratest.service.AttachResult;
 import org.aludratest.service.Interaction;
 import org.aludratest.service.TechnicalArgument;
 import org.aludratest.service.TechnicalLocator;
@@ -26,13 +28,13 @@ public interface JmsInteraction extends Interaction {
 	
 	// sending messages --------------------------------------------------------
 
-	void sendTextMessage(String text, @TechnicalLocator String destinationName);
+	void sendTextMessage(@AttachParameter("Message text") String text, @TechnicalLocator String destinationName);
 
-	void sendObjectMessage(Serializable object, @TechnicalLocator String destinationName);
+	void sendObjectMessage(@AttachParameter("Message object") Serializable object, @TechnicalLocator String destinationName);
 
-	void sendFileAsTextMessage(String fileUri, @TechnicalLocator String destinationName);
+	@AttachResult("Message text") String sendFileAsTextMessage(String fileUri, @TechnicalLocator String destinationName);
 
-	void sendFileAsBytesMessage(String fileUri, @TechnicalLocator String destinationName);
+	@AttachResult("Message content (BASE64)") String sendFileAsBytesMessage(String fileUri, @TechnicalLocator String destinationName);
 
 	
 	// receiving messages from a queue -----------------------------------------

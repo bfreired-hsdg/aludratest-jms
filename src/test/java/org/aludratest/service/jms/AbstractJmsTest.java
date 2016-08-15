@@ -15,12 +15,11 @@
  */
 package org.aludratest.service.jms;
 
-import org.aludratest.config.impl.SimplePreferences;
-import org.aludratest.service.jms.impl.JmsServiceImpl;
+import org.aludratest.service.AludraService;
+import org.aludratest.service.ComponentId;
+import org.aludratest.testing.service.AbstractAludraServiceTest;
 import org.apache.activemq.broker.BrokerService;
-import org.apache.activemq.jndi.ActiveMQInitialContextFactory;
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.slf4j.Logger;
@@ -31,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * @author Volker Bergmann
  */
 
-public class AbstractJmsTest {
+public class AbstractJmsTest extends AbstractAludraServiceTest {
 	
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractJmsTest.class);
 
@@ -42,44 +41,27 @@ public class AbstractJmsTest {
     protected JmsService service;
 
     @BeforeClass
-    public static void startTestBroker() {
+    public static void startTestBroker() throws Exception {
         LOGGER.info("Setting up embedded ActiveMQ broker for URL " + testBrokerUri);
         testBroker = new BrokerService();
-        try {
-            testBroker.setPersistent(false);
-            testBroker.addConnector(testBrokerUri);
-            testBroker.start();
-        } catch (Exception e) {
-            Assert.fail("Failed to setup testbroker for url "
-                    + testBrokerUri + " : " + e.getMessage());
-        }
+        testBroker.setPersistent(false);
+        testBroker.addConnector(testBrokerUri);
+        testBroker.start();
         LOGGER.info("Done setting up embedded ActiveMQ broker for URL " + testBrokerUri);
     }
 
     @Before
     public void prepareJmsService() {
         LOGGER.info("Setting up JmsService object connected to URL " + testBrokerUri);
-        try {
-            this.service = buildJmsService();
- 
-
-        } catch (Exception e) {
-            Assert.fail("Failed to connect to testbroker on url "
-                    + testBrokerUri + " : " + e.getMessage());
-        }
+        this.service = getLoggingJmsService();
         LOGGER.info("Done setting up JmsService object connected to URL " + testBrokerUri);
     }
 
     @AfterClass
-    public static void stopTestBroker() {
+    public static void stopTestBroker() throws Exception {
         LOGGER.info("Stopping embedded ActiveMQ broker for URL " + testBrokerUri);
         if (testBroker != null && testBroker.isStarted()) {
-            try {
-                testBroker.stop();
-            } catch (Exception e)  {
-                Assert.fail("Failed to stop testbroker for url "
-                        + testBrokerUri + " : " + e.getMessage());
-            }
+        	testBroker.stop();
         }
         LOGGER.info("Done stopping embedded ActiveMQ broker for URL " + testBrokerUri);
     }
@@ -90,15 +72,13 @@ public class AbstractJmsTest {
      * @return  the JmsService.
      * @throws org.aludratest.exception.TechnicalException On error initiating the service.
      */
-    protected JmsService buildJmsService() {
-        SimplePreferences preferences = new  SimplePreferences();
-        preferences.setValue("connectionFactoryJndiName","ConnectionFactory");
-        preferences.setValue("providerUrl",testBrokerUri);
-        preferences.setValue("initialContextFactory",ActiveMQInitialContextFactory.class.getName());
+    protected JmsService getLoggingJmsService() {
+        return newLoggingService(JmsService.class, "jmsTest");
+    }
 
-        JmsServiceImpl prepareTestObject = new JmsServiceImpl();
-        prepareTestObject.configure(preferences);
-        return prepareTestObject;
+    @SuppressWarnings("unchecked")
+    public <T extends AludraService, U extends T> U newLoggingService(Class<T> interfaceClass, String moduleName) {
+        return (U) framework.getServiceManager().createAndConfigureService(ComponentId.create(interfaceClass, moduleName), context, true);
     }
 
 }

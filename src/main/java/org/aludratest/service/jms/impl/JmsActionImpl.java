@@ -54,6 +54,7 @@ import org.aludratest.testcase.event.attachment.Attachment;
 import org.aludratest.testcase.event.attachment.StringAttachment;
 import org.databene.commons.Assert;
 import org.databene.commons.Base64Codec;
+import org.databene.commons.CollectionUtil;
 import org.databene.commons.IOUtil;
 import org.databene.commons.StringUtil;
 import org.databene.commons.Validator;
@@ -118,7 +119,7 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 
 	@Override
 	public List<Attachment> createAttachments(Object object, String title) {
-		return null;
+		return CollectionUtil.toListOfType(Attachment.class, new StringAttachment(title, String.valueOf(object), ".txt"));
 	}
 
 	@Override
@@ -173,11 +174,12 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 	}
 
 	@Override
-	public void sendFileAsTextMessage(String fileUri, String destinationName) {
+	public String sendFileAsTextMessage(String fileUri, String destinationName) {
 		try {
 			String fileContent = IOUtil.getContentOfURI(fileUri);
 			memorizeMessage(fileContent);
 			sendTextMessage(fileContent, destinationName);
+			return fileContent;
 		}
 		catch (IOException e) {
 			throw new AccessFailure("File access failed", e);
@@ -185,13 +187,14 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 	}
 
 	@Override
-	public void sendFileAsBytesMessage(String fileUri, String destinationName) {
+	public String sendFileAsBytesMessage(String fileUri, String destinationName) {
 		try {
 			byte[] fileContent = IOUtil.getBinaryContentOfUri(fileUri);
 			memorizeMessage(fileContent);
 			BytesMessage message = createBytesMessage();
 			message.writeBytes(fileContent);
 			sendMessage(message, destinationName);
+			return Base64Codec.encode(fileContent);
 		}
 		catch (IOException e) {
 			throw new AccessFailure("File access failed", e);
