@@ -32,26 +32,37 @@ public abstract class JmsSender<E extends JmsSender<E>> implements ActionWordLib
 	private JmsService service;
 	private String destinationName;
 	
+	/** Full constructor.
+	 *  @param destinationName
+	 *  @param service the {@link JmsService} to use for accessing the destination */
 	public JmsSender(String destinationName, JmsService service) {
 		this.destinationName = destinationName;
 		this.service = service;
 	}
 
+	/** Sends a text message to this sender's destination.
+	 *  @param data a data object holding the message text */
 	public final E sendTextMessage(TextMessageData data) {
 		service.perform().sendTextMessage(data.getMessageText(), destinationName);
 		return verifyState();
 	}
 
+	/** Sends an object message to this sender's destination.
+	 *  @param data a data object holding the message text */
 	public final E sendObjectMessage(ObjectMessageData data) {
 		service.perform().sendObjectMessage(data.getMessageObject(), destinationName);
 		return verifyState();
 	}
 
+	/** Reads a text file and sends its content as text message to this sender's destination.
+	 *  @param data a data object holding the URI of the file to read */
 	public final E sendFileAsTextMessage(FileMessageData data) {
 		service.perform().sendFileAsTextMessage(data.getFileUri(), destinationName);
 		return verifyState();
 	}
 	
+	/** Reads a binary file and sends its content as bytes message to this sender's destination.
+	 *  @param data a data object holding the URI of the file to read */
 	public final E sendFileAsBytesMessage(FileMessageData data) {
 		service.perform().sendFileAsBytesMessage(data.getFileUri(), destinationName);
 		return verifyState();
