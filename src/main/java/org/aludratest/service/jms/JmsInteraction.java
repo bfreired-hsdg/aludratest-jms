@@ -75,23 +75,27 @@ public interface JmsInteraction extends Interaction {
 	String receiveTextMessageFromTopic(
 			@TechnicalLocator String subscriptionName, 
 			@TechnicalArgument String messageSelector, 
-			@TechnicalArgument long timeout);
+			@TechnicalArgument long timeout,
+			@TechnicalArgument boolean required);
 
 	String receiveTextMessageFromTopicAndValidate(
 			@TechnicalLocator String subscriptionName, 
 			@TechnicalArgument String messageSelector, 
-			@TechnicalArgument long timeout, 
+			@TechnicalArgument long timeout,
+			@TechnicalArgument boolean required, 
 			@TechnicalArgument Validator<String> validator);
 
 	Serializable receiveObjectMessageFromTopic(
 			@TechnicalLocator String subscriptionName, 
 			@TechnicalArgument String messageSelector, 
-			@TechnicalArgument long timeout);
+			@TechnicalArgument long timeout,
+			@TechnicalArgument boolean required);
 
 	Serializable receiveObjectMessageFromTopicAndValidate(
 			@TechnicalLocator String subscriptionName, 
 			@TechnicalArgument String messageSelector, 
-			@TechnicalArgument long timeout, 
+			@TechnicalArgument long timeout,
+			@TechnicalArgument boolean required, 
 			@TechnicalArgument Validator<Serializable> validator);
 
 }

@@ -80,7 +80,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
      * </ul>
       */
     @Test
-    public void testTopicSubscriber() {
+    public void testDynamicTopicSubscriber() {
 
         LOGGER.info("Begin testTopicSubscriber");
 
@@ -95,7 +95,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         this.service.perform().sendTextMessage(expectedText1, TOPIC_NAME);
 
         LOGGER.info("Waiting a bit to receive message(s) from " + TOPIC_NAME);
-        String receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        String receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100, true);
 
         LOGGER.info("Checking if message(s) where received on " + TOPIC_NAME);
         Assert.assertEquals(expectedText1, receivedMessageText);
@@ -107,7 +107,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         this.service.perform().sendTextMessage(expectedText2, TOPIC_NAME);
         
         LOGGER.info("Waiting a bit to receive message(s) from " + TOPIC_NAME);
-        receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        receivedMessageText = this.service.perform().receiveTextMessageFromTopic(subscriptionName, null, 100, false);
         
         LOGGER.info("Assert than NO message(s) where received on " + TOPIC_NAME);
         assertNull(receivedMessageText);
@@ -149,7 +149,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         service2.perform().startSubscriber(subscriptionName, TOPIC_NAME, null, true);
 
         LOGGER.info("Waiting for messages on subscription...");
-        String receivedMessage = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        String receivedMessage = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100, true);
 
         LOGGER.info("Check for expected message");
         Assert.assertNotNull("Expected message not received!", receivedMessage);
@@ -162,7 +162,7 @@ public class JmsActionImplTest extends AbstractJmsTest {
         this.service.perform().sendTextMessage(expectedText, TOPIC_NAME);
 
         LOGGER.info("Waiting for messages on subscription...");
-        String receivedMessage2 = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100);
+        String receivedMessage2 = service2.perform().receiveTextMessageFromTopic(subscriptionName, null, 100, false);
         
         Assert.assertNull("Received unexpected message!", receivedMessage2);
         service2.close();

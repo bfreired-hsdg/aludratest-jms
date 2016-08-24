@@ -19,6 +19,8 @@ import org.aludratest.service.AludraService;
 import org.aludratest.service.ComponentId;
 import org.aludratest.testing.service.AbstractAludraServiceTest;
 import org.apache.activemq.broker.BrokerService;
+import org.databene.commons.IOUtil;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -55,6 +57,11 @@ public class AbstractJmsTest extends AbstractAludraServiceTest {
         LOGGER.info("Setting up JmsService object connected to URL " + testBrokerUri);
         this.service = getLoggingJmsService();
         LOGGER.info("Done setting up JmsService object connected to URL " + testBrokerUri);
+    }
+    
+    @After
+    public void closeJmsService() {
+    	IOUtil.close(service);
     }
 
     @AfterClass

@@ -263,9 +263,9 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 	}
 	
 	@Override
-	public String receiveTextMessageFromTopic(String subscriptionName, String messageSelector, long timeout) {
+	public String receiveTextMessageFromTopic(String subscriptionName, String messageSelector, long timeout, boolean required) {
 		try {
-			TextMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, TextMessage.class);
+			TextMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, required, TextMessage.class);
 			String text = (message != null ? message.getText() : null);
 			memorizeMessage(text);
 			return text;
@@ -275,9 +275,9 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 	}
 	
 	@Override
-	public Serializable receiveObjectMessageFromTopic(String subscriptionName, String messageSelector, long timeout) {
+	public Serializable receiveObjectMessageFromTopic(String subscriptionName, String messageSelector, long timeout, boolean required) {
 		try {
-			ObjectMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, ObjectMessage.class);
+			ObjectMessage message = receiveTopicMessage(subscriptionName, messageSelector, timeout, required, ObjectMessage.class);
 			Serializable object = (message != null ? message.getObject() : null);
 			memorizeMessage(object);
 			return object;
@@ -288,8 +288,8 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 	
 	@Override
 	public String receiveTextMessageFromTopicAndValidate(@TechnicalLocator String subscriptionName, String messageSelector,
-			@TechnicalArgument long timeout, @TechnicalArgument Validator<String> validator) {
-		String text = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+			@TechnicalArgument long timeout, boolean required, @TechnicalArgument Validator<String> validator) {
+		String text = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout, required);
 		memorizeMessage(text);
 		if (!validator.valid(text))
 			throw new FunctionalFailure("Message invalid");
@@ -298,8 +298,8 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 
 	@Override
 	public Serializable receiveObjectMessageFromTopicAndValidate(@TechnicalLocator String subscriptionName, String messageSelector,
-			@TechnicalArgument long timeout, @TechnicalArgument Validator<Serializable> validator) {
-		Serializable object = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+			@TechnicalArgument long timeout, boolean required, @TechnicalArgument Validator<Serializable> validator) {
+		Serializable object = receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout, required);
 		memorizeMessage(object);
 		if (!validator.valid(object))
 			throw new FunctionalFailure("Message invalid");
@@ -508,13 +508,21 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
 		}
 	}
 	
+	/** Waits until a message arrives, applying a timeout
+	 *  @param timeout the number of milliseconds to wait, <code>0</code> means to wait without timeout.
+	 *  @return the received message or <code>null</code> if no message arrived within the timeout */
 	@SuppressWarnings("unchecked")
-	private <T extends Message> T receiveTopicMessage(String subscriptionName, String messageSelector, long timeout, Class<T> type) {
+	private <T extends Message> T receiveTopicMessage(String subscriptionName, String messageSelector, long timeout, boolean required, Class<T> type) {
 		TopicHandler handler = getTopicHandler(subscriptionName);
 		Message message = handler.receive(timeout);
-		if (message != null && !type.isAssignableFrom(message.getClass())) {
-			throw new AutomationException("Received message is not a text message");
+		if (message != null) {
+			if (!type.isAssignableFrom(message.getClass())) {
+				throw new AutomationException("Received message is not a text message. ");
+			}
+		} else if (required) {
+			throw new PerformanceFailure("No message received within the timeout of " + timeout + " ms. ");
 		}
+		
 		return (T) message;
 	}
 	

@@ -15,9 +15,14 @@
  */
 package org.aludratest.service.jms;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+
 import java.util.UUID;
 
 import org.aludratest.service.jms.data.TextMessageData;
+import org.aludratest.testcase.TestStatus;
+import org.aludratest.testcase.event.TestStepInfo;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.junit.Test;
@@ -70,12 +75,68 @@ public class JmsAwlTest extends AbstractJmsTest {
         
         LOGGER.info("Receiving TextMessage from topic " + TOPIC_NAME);
         TextMessageData receivedMessage = new TextMessageData();
-        receiver.receiveTextMessage(null, 100, receivedMessage);
+        receiver.receiveTextMessage(null, 100, true, receivedMessage);
         receiver.stop();
 
         Assert.assertEquals(textContent, receivedMessage.getMessageText());
 
         LOGGER.info("End testTopic");
+    }
+
+    @Test
+    public void testRequiredTopicMessageSuccess() {
+        final String textContent = UUID.randomUUID().toString();
+
+        LOGGER.info("Starting receiver");
+        MyTopicSubscriber receiver = new MyTopicSubscriber(SUBSCRIPTION_NAME, TOPIC_NAME, false, service);
+        receiver.start(null);
+
+        new Thread() {
+        	@Override
+			public void run() {
+                LOGGER.info("Sending TextMessage to topic " + TOPIC_NAME);
+                MyJmsSender sender = new MyJmsSender(TOPIC_NAME, service);
+                sender.sendTextMessage(new TextMessageData(textContent));
+        	};
+        }.start();
+        
+        LOGGER.info("Receiving TextMessage from topic " + TOPIC_NAME);
+        TextMessageData receivedMessage = new TextMessageData();
+        receiver.receiveTextMessage(null, 1000, true, receivedMessage);
+        receiver.stop();
+
+        Assert.assertEquals(textContent, receivedMessage.getMessageText());
+
+        LOGGER.info("End testTopic");
+    }
+
+    @Test
+    public void testRequiredTopicMessageFailure() {
+        MyTopicSubscriber receiver = null;
+    	try {
+	        receiver = new MyTopicSubscriber(SUBSCRIPTION_NAME, TOPIC_NAME, false, service);
+	        receiver.start(null);
+	        TextMessageData receivedMessage = new TextMessageData();
+	        receiver.receiveTextMessage(null, 100, true, receivedMessage);
+	        TestStepInfo lastFailedTestStep = getLastFailedTestStep();
+	        assertNotNull(lastFailedTestStep);
+			assertEquals(TestStatus.FAILEDPERFORMANCE, lastFailedTestStep.getTestStatus());
+    	} finally {
+    		if (receiver != null) {
+    			receiver.stop();
+    		}
+    	}
+    }
+
+    @Test
+    public void testNonrequiredTopicMessageFailure() {
+        final String textContent = UUID.randomUUID().toString();
+        MyTopicSubscriber receiver = new MyTopicSubscriber(SUBSCRIPTION_NAME, TOPIC_NAME, false, service);
+        receiver.start(null);
+        TextMessageData receivedMessage = new TextMessageData();
+        receiver.receiveTextMessage(null, 100, false, receivedMessage);
+        receiver.stop();
+        Assert.assertNull(textContent, receivedMessage.getMessageText());
     }
 
 }
