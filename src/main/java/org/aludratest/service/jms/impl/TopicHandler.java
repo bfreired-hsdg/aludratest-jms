@@ -48,6 +48,7 @@ public class TopicHandler implements Closeable {
 		return durable;
 	}
 
+	/** Waits until a message arrives, applying no timeout */
 	public Message receive() {
 		try {
 			return subscriber.receive();
@@ -56,6 +57,9 @@ public class TopicHandler implements Closeable {
 		}
 	}
 
+	/** Waits until a message arrives, applying a timeout
+	 *  @param timeout the number of milliseconds to wait, <code>0</code> means to wait without timeout.
+	 *  @return the received message or <code>null</code> if no message arrived within the timeout */
 	public Message receive(long timeout) {
 		try {
 			return subscriber.receive(timeout);

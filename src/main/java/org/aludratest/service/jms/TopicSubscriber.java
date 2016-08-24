@@ -20,6 +20,7 @@ import java.io.Serializable;
 import javax.jms.Topic;
 
 import org.aludratest.exception.FunctionalFailure;
+import org.aludratest.exception.PerformanceFailure;
 import org.aludratest.service.jms.data.ObjectMessageData;
 import org.aludratest.service.jms.data.TextMessageData;
 import org.databene.commons.Validator;
@@ -72,46 +73,58 @@ public abstract class TopicSubscriber<E extends TopicSubscriber<E>> extends Abst
 	}
 
 	/** Receives a text message from the queue and puts its content into the result object provided as invocation parameter.
-	 *  If no message is received within the timeout period, null is returned as message text.
+	 *  If no message is received within the timeout period, the outcome depends on the value of the <code>required</code> 
+	 *  parameter: If required is true, then a PerformanceFailure is thrown, otherwise null is returned as message text.
+	 *  @exception PerformanceFailure if <code>required = true</code> and no message is received within the timeout period.
 	 *  @param messageSelector a String or null value for filtering messages as described in https://docs.oracle.com/cd/E19798-01/821-1841/bncer/index.html
 	 *  @param timeout the timeout to apply in milliseconds
+	 *  @param required a flag that specified if a message is required
 	 *  @param result a {@link TextMessageData} instance to be used for returning the text message content */
-	public final E receiveTextMessage(String messageSelector, long timeout, TextMessageData result) {
-		String messageText = service.perform().receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+	public final E receiveTextMessage(String messageSelector, long timeout, boolean required, TextMessageData result) {
+		String messageText = service.perform().receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout, required);
 		result.setMessageText(messageText);
 		return verifyState();
 	}
 
 	/** Receives a text message from the queue and validates it using the {@link Validator} object provided as parameter.
-	 *  If no message is received within the timeout period, a null value is passed to the validator.
+	 *  If no message is received within the timeout period, the outcome depends on the value of the <code>required</code> 
+	 *  parameter: If required is true, then a PerformanceFailure is thrown, otherwise null is passed to the validator.
 	 *  @exception FunctionalFailure if the message text is not valid
+	 *  @exception PerformanceFailure if <code>required = true</code> and no message is received within the timeout period.
 	 *  @param messageSelector a String or null value for filtering messages as described in https://docs.oracle.com/cd/E19798-01/821-1841/bncer/index.html
 	 *  @param timeout the timeout to apply in milliseconds
+	 *  @param required a flag that specified if a message is required
 	 *  @param validator a {@link Validator} object to be used for validating the message text */
-	public final E receiveTextMessageAndValidate(String messageSelector, long timeout, Validator<String> validator) {
-		service.perform().receiveTextMessageFromTopicAndValidate(subscriptionName, messageSelector, timeout, validator);
+	public final E receiveTextMessageAndValidate(String messageSelector, long timeout, boolean required, Validator<String> validator) {
+		service.perform().receiveTextMessageFromTopicAndValidate(subscriptionName, messageSelector, timeout, required, validator);
 		return verifyState();
 	}
 
 	/** Receives an object message from the queue and puts its content into the result object provided as invocation parameter.
-	 *  If no message is received within the timeout period, null is returned as message content object.
+	 *  If no message is received within the timeout period, the outcome depends on the value of the <code>required</code> 
+	 *  parameter: If required is true, then a PerformanceFailure is thrown, otherwise <code>null</code> is returned as message content object.
+	 *  @exception PerformanceFailure if <code>required = true</code> and no message is received within the timeout period.
 	 *  @param messageSelector a String or null value for filtering messages as described in https://docs.oracle.com/cd/E19798-01/821-1841/bncer/index.html
 	 *  @param timeout the timeout to apply in milliseconds
+	 *  @param required a flag that specified if a message is required
 	 *  @param result an {@link ObjectMessageData} instance to be used for returning the message content object */
-	public final E receiveObjectMessage(String messageSelector, long timeout, ObjectMessageData result) {
-		String object = service.perform().receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout);
+	public final E receiveObjectMessage(String messageSelector, long timeout, boolean required, ObjectMessageData result) {
+		String object = service.perform().receiveTextMessageFromTopic(subscriptionName, messageSelector, timeout, required);
 		result.setMessageObject(object);
 		return verifyState();
 	}
 
 	/** Receives an object message from the queue and validates it using the {@link Validator} object provided as parameter.
-	 *  If no message is received within the timeout period, a null value is passed to the validator.
+	 *  If no message is received within the timeout period, the outcome depends on the value of the <code>required</code> 
+	 *  parameter: If required is true, then a PerformanceFailure is thrown, otherwise a null value is passed to the validator.
+	 *  @exception PerformanceFailure if <code>required = true</code> and no message is received within the timeout period.
 	 *  @exception FunctionalFailure if the message object is not valid
 	 *  @param messageSelector a String or null value for filtering messages as described in https://docs.oracle.com/cd/E19798-01/821-1841/bncer/index.html
 	 *  @param timeout the timeout to apply in milliseconds
+	 *  @param required a flag that specified if a message is required
 	 *  @param validator a {@link Validator} object to be used for validating the message object */
-	public final E receiveObjectMessageAndValidate(String messageSelector, long timeout, Validator<Serializable> validator) {
-		service.perform().receiveObjectMessageFromTopicAndValidate(subscriptionName, messageSelector, timeout, validator);
+	public final E receiveObjectMessageAndValidate(String messageSelector, long timeout, boolean required, Validator<Serializable> validator) {
+		service.perform().receiveObjectMessageFromTopicAndValidate(subscriptionName, messageSelector, timeout, required, validator);
 		return verifyState();
 	}
 
