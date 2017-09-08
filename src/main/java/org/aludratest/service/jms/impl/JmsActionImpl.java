@@ -102,7 +102,7 @@ public class JmsActionImpl implements JmsInteraction, JmsCondition, JmsVerificat
     }
 
 	public void close() {
-		LOGGER.info("Closing JmsServcie for clientId " + this.clientId );
+		LOGGER.info("Closing JmsService for clientId " + this.clientId );
 		for (TopicHandler handler : this.topicHandlers.values()) {
 			handler.stop();
 			handler.close();
